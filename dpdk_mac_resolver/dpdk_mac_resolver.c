@@ -51,8 +51,8 @@ void derive_multicast_mac_from_ipv6(struct in6_addr *ipv6_addr, struct rte_ether
     // Solicited-node multicast address starts with 33:33 for MAC
     dst_mac->addr_bytes[0] = 0x33;
     dst_mac->addr_bytes[1] = 0x33;
-    // Use the last 32 bits of the IPv6 address for the MAC address
-    dst_mac->addr_bytes[2] = ipv6_addr->s6_addr[12];
+	dst_mac->addr_bytes[2] = 0xFF;
+    // Use the last 24 bits of the IPv6 address for the MAC address
     dst_mac->addr_bytes[3] = ipv6_addr->s6_addr[13];
     dst_mac->addr_bytes[4] = ipv6_addr->s6_addr[14];
     dst_mac->addr_bytes[5] = ipv6_addr->s6_addr[15];
@@ -259,9 +259,18 @@ void send_ndp_request(struct rte_mempool *mbuf_pool, uint16_t port_id, const cha
 	uint8_t *ndp_options;
 	ndp_options = (uint8_t *)(icmp_target_addr + 1);
 	// Convert IP addresses from string
-	struct in6_addr src_ip, dst_ip;
+	struct in6_addr src_ip, dst_ip, solicited_node_ip;
 	inet_pton(AF_INET6, src_ip_str, &src_ip);
 	inet_pton(AF_INET6, dst_ip_str, &dst_ip);
+	memset(&solicited_node_ip, 0, sizeof(solicited_node_ip));
+    solicited_node_ip.s6_addr[0] = 0xff;
+    solicited_node_ip.s6_addr[1] = 0x02;
+    solicited_node_ip.s6_addr[11] = 0x01;
+    solicited_node_ip.s6_addr[12] = 0xff;
+	// Use the last 24 bits of the IPv6 address for solicited multicast ip
+    solicited_node_ip.s6_addr[13] = dst_ip.s6_addr[13];
+    solicited_node_ip.s6_addr[14] = dst_ip.s6_addr[14];
+    solicited_node_ip.s6_addr[15] = dst_ip.s6_addr[15];
 	struct rte_ether_addr src_mac, dst_mac;
 	int ret = rte_ether_unformat_addr(src_mac_str, &src_mac);
 	if (ret < 0)
@@ -270,7 +279,8 @@ void send_ndp_request(struct rte_mempool *mbuf_pool, uint16_t port_id, const cha
 	derive_multicast_mac_from_ipv6(&dst_ip, &dst_mac);
 	// Set up Ethernet header
 	set_ethernet_header(eth_hdr, &src_mac, &dst_mac, RTE_ETHER_TYPE_IPV6);
-	set_ipv6_header(ipv6_hdr, &src_ip, &dst_ip);
+	//Set up IPv6 header
+	set_ipv6_header(ipv6_hdr, &src_ip, &solicited_node_ip);
 	// Set up ICMPv6 header for Neighbor Solicitation
 	set_icmp_header_and_body(ipv6_hdr, icmp_hdr, icmp_target_addr, ndp_options, &dst_ip, &src_mac);
 	
@@ -280,6 +290,7 @@ void send_ndp_request(struct rte_mempool *mbuf_pool, uint16_t port_id, const cha
 	mbuf->l2_len = sizeof(struct rte_ether_hdr);
 	mbuf->l3_len = sizeof(struct rte_ipv6_hdr);
 	mbuf->l4_len = sizeof(struct rte_icmp_hdr);
+	mbuf->ol_flags = 0;
 	log_hex_dump( "NS Packet Sent",mbuf,1);
 	const uint16_t nb_tx = rte_eth_tx_burst(port_id, 0, &mbuf, 1);
 	if (nb_tx != 1) {

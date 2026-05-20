@@ -1,0 +1,16 @@
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: ${CLUSTER_NAME}
+    apiServerEndpoint: ${API_SERVER_URL}
+    certificateAuthority: ${B64_CLUSTER_CA}
+    cidr: ${SERVICE_CIDR}
+  kubelet:
+    config:
+      maxPods: 110
+      clusterDNS:
+        - ${CLUSTER_DNS}
+      cpuManagerPolicy: "static"
+    flags:
+      - "--node-labels=cnf=cnf01,sriov=enabled"
